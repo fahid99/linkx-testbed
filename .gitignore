@@ -1,0 +1,24 @@
+# Live + snapshot databases (regenerated deterministically by scripts.init_db)
+data/*.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Env / secrets (ANTHROPIC_API_KEY etc. — never commit)
+.env
+.env.*
+!.env.example
+
+# OS / editor cruft
+.DS_Store
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Scratch run logs
+scratch_*.log

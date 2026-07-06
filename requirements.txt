@@ -1,0 +1,17 @@
+# --- LinkX API (Week 1) ---
+fastapi
+uvicorn[standard]
+sqlalchemy>=2.0
+pydantic>=2
+python-dotenv>=1.0
+faker
+httpx
+
+# --- MCP servers + agent chain (Week 2) ---
+# `mcp` bundles FastMCP (mcp.server.fastmcp) used by both servers over
+# streamable-HTTP; no separate `fastmcp` package is required.
+mcp>=1.6
+langgraph>=0.3
+langchain>=0.3
+langchain-anthropic>=0.3
+langchain-mcp-adapters>=0.1
