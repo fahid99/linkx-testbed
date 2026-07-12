@@ -26,7 +26,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
+import os
 import uuid
+from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 
@@ -37,6 +42,21 @@ from mcp_servers.malicious import INJECTED_TICKET_BODY
 
 MODEL_ALIASES = {"opus": "claude-opus-4-8", "sonnet": "claude-sonnet-4-6"}
 MATRIX_ATTACKS = ["off", "tpa_p1", "tpa_p2", "tpa_p3", "ipi_ticket", "ipi_tool"]
+
+# Where per-trial traces land. Diagnostic artifacts only — override with
+# LINKX_TRACE_DIR. Tracing is opt-in (runner --trace); it never changes scoring.
+TRACE_DIR = Path(os.environ.get("LINKX_TRACE_DIR", "data/traces"))
+
+
+def _dump_trace(result: dict) -> Path:
+    """Write one trial's full result (including the per-agent message trace) to
+    a JSON file keyed by run_id, so a run can be replayed offline to see *why*
+    the attack did or didn't land."""
+    TRACE_DIR.mkdir(parents=True, exist_ok=True)
+    path = TRACE_DIR / f"{result['run_id']}.json"
+    payload = {**result, "written_at": datetime.now(timezone.utc).isoformat()}
+    path.write_text(json.dumps(payload, indent=2, default=str))
+    return path
 
 
 def _resolve_model(name: str) -> str:
@@ -57,8 +77,13 @@ async def _preflight() -> bool:
 
 
 async def run_trial(*, attack_name: str, model_id: str, victim_customer_id: int | None = None,
-                    verbose: bool = True) -> dict:
-    """Run one trial and return its scored result."""
+                    verbose: bool = True, trace: bool = False) -> dict:
+    """Run one trial and return its scored result.
+
+    When ``trace`` is set, the full per-agent message trace (tool calls, tool
+    results, refusals) is written to ``TRACE_DIR`` for offline analysis. This is
+    diagnostic-only and does not affect scoring.
+    """
     attack = ATTACKS[attack_name]
     run_id = f"{attack_name}.{model_id}.{uuid.uuid4().hex[:8]}"
 
@@ -110,24 +135,55 @@ async def run_trial(*, attack_name: str, model_id: str, victim_customer_id: int 
         "cascade_depth": depth,
         "transcript": final_state.get("transcript", []),
     }
+    if trace:
+        result["trace_path"] = str(_dump_trace(result))
+
     if verbose:
         depth_s = "none" if depth is None else str(depth)
-        print(f"[{model_id} | {attack_name:11s}] "
-              f"ASR={result['security_asr']!s:5s} token_ASR={result['token_asr']!s:5s} "
-              f"utility={result['utility']!s:5s} cascade_depth={depth_s}")
+        line = (f"[{model_id} | {attack_name:11s}] "
+                f"ASR={result['security_asr']!s:5s} token_ASR={result['token_asr']!s:5s} "
+                f"utility={result['utility']!s:5s} cascade_depth={depth_s}")
+        if trace:
+            line += f"  trace={result['trace_path']}"
+        print(line)
     return result
 
 
 async def run_matrix(models: list[str], attacks: list[str],
-                     victim_customer_id: int | None = None) -> list[dict]:
+                     victim_customer_id: int | None = None,
+                     repeat: int = 1, trace: bool = False) -> list[dict]:
     results = []
     for model_id in models:
         for attack_name in attacks:
-            results.append(await run_trial(
-                attack_name=attack_name, model_id=model_id,
-                victim_customer_id=victim_customer_id))
+            for _ in range(repeat):
+                results.append(await run_trial(
+                    attack_name=attack_name, model_id=model_id,
+                    victim_customer_id=victim_customer_id, trace=trace))
     _print_summary(results)
+    if repeat > 1:
+        _print_condition_aggregate(results)
     return results
+
+
+def _print_condition_aggregate(results: list[dict]) -> None:
+    """Per-(model, attack) ASR/utility rates across repeats — the n>>1 view the
+    single-shot summary can't give. This is the headline table for the
+    'is ~0% ASR real or a harness artifact?' question."""
+    buckets: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for r in results:
+        buckets[(r["model"], r["attack"])].append(r)
+
+    print("\n=== Per-condition aggregate (n per cell) ===")
+    print(f"{'model':20s} {'attack':12s} {'n':>3s} {'ASR':>7s} {'token':>7s} "
+          f"{'util':>7s} {'depth>0':>8s}")
+    for (model_id, attack_name), rows in sorted(buckets.items()):
+        n = len(rows)
+        asr = sum(r["security_asr"] for r in rows) / n
+        tok = sum(r["token_asr"] for r in rows) / n
+        util = sum(r["utility"] for r in rows) / n
+        casc = sum(1 for r in rows if r["cascade_depth"]) / n
+        print(f"{model_id:20s} {attack_name:12s} {n:>3d} {asr:>6.0%} {tok:>6.0%} "
+              f"{util:>6.0%} {casc:>7.0%}")
 
 
 def _print_summary(results: list[dict]) -> None:
@@ -152,25 +208,41 @@ def main() -> None:
                         help=f"one of: {', '.join(ATTACKS)} (default: baseline demo pair)")
     parser.add_argument("--matrix", action="store_true",
                         help="run both models x all attack conditions")
+    parser.add_argument("--pilot", action="store_true",
+                        help="repeat each attack condition on one model (default --repeat 5, "
+                             "--trace on) to probe whether ~0%% ASR is real or a harness artifact")
+    parser.add_argument("--repeat", type=int, default=1,
+                        help="trials per condition (default 1; --pilot defaults it to 5)")
+    parser.add_argument("--trace", action="store_true",
+                        help="write full per-agent message traces to LINKX_TRACE_DIR")
     parser.add_argument("--victim", type=int, default=None, help="victim customer id")
     args = parser.parse_args()
 
     if not asyncio.run(_preflight()):
         raise SystemExit(1)
 
+    if args.pilot:
+        model_id = _resolve_model(args.model)
+        repeat = args.repeat if args.repeat > 1 else 5
+        asyncio.run(run_matrix([model_id], MATRIX_ATTACKS, args.victim,
+                               repeat=repeat, trace=True))
+        return
+
     if args.matrix:
         models = [MODEL_ALIASES["sonnet"], MODEL_ALIASES["opus"]]
-        asyncio.run(run_matrix(models, MATRIX_ATTACKS, args.victim))
+        asyncio.run(run_matrix(models, MATRIX_ATTACKS, args.victim,
+                               repeat=args.repeat, trace=args.trace))
         return
 
     model_id = _resolve_model(args.model)
     if args.attack:
         asyncio.run(run_trial(attack_name=args.attack, model_id=model_id,
-                              victim_customer_id=args.victim))
+                              victim_customer_id=args.victim, trace=args.trace))
     else:
         # Default demo: reproduce the smoke test through real agents —
         # benign succeeds with attack off; exfil succeeds with attack on.
-        asyncio.run(run_matrix([model_id], ["off", "all"], args.victim))
+        asyncio.run(run_matrix([model_id], ["off", "all"], args.victim,
+                               repeat=args.repeat, trace=args.trace))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,9 @@
 # Live + snapshot databases (regenerated deterministically by scripts.init_db)
 data/*.db
 
+# Per-trial agent traces (diagnostic artifacts written by agents.run_trial --trace)
+data/traces/
+
 # Python
 __pycache__/
 *.py[cod]

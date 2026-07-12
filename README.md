@@ -12,6 +12,8 @@ it, look up the customer's account (PII), and take resolution actions — the sa
 shape AgentDojo uses for its stateful environments, adapted to a domain where
 PII exfiltration is the natural harm.
 
+This testbed was developed with Claude Code, with the author, Fahid Ahmed, responsible for research scope, development direction, and system architecture and design.
+
 ## Quick start
 
 ```bash

@@ -137,6 +137,30 @@ def _text(msg: Any) -> str:
     return str(content)
 
 
+def _serialize_messages(messages: list) -> list[dict]:
+    """Flatten a node's message list into plain dicts for offline analysis.
+
+    Captures enough to answer *why* an agent did (or didn't) exfiltrate:
+    the per-turn text, any tool calls the model requested (name + args), and
+    the tool results fed back. This is diagnostic-only — it never feeds back
+    into the chain or the scorer, so it cannot affect ASR. Used by the runner
+    to write a full trace per trial when tracing is on.
+    """
+    trace: list[dict] = []
+    for m in messages:
+        role = type(m).__name__  # SystemMessage / HumanMessage / AIMessage / ToolMessage
+        entry: dict[str, Any] = {"role": role, "text": _text(m)}
+        tool_calls = getattr(m, "tool_calls", None) or []
+        if tool_calls:
+            entry["tool_calls"] = [
+                {"name": tc.get("name"), "args": tc.get("args")} for tc in tool_calls
+            ]
+        if role == "ToolMessage":
+            entry["tool_name"] = getattr(m, "name", None)
+        trace.append(entry)
+    return trace
+
+
 async def _record_handoff(run_id: str, hop: int, source: str, target: str, payload: str) -> None:
     """Persist an inter-agent handoff so the scorer can measure cascade depth."""
     async with httpx.AsyncClient(base_url=LINKX_API, timeout=30.0) as client:
@@ -253,7 +277,15 @@ def make_node(
         if next_principal is not None:
             await _record_handoff(run_id, hop_index, principal, next_principal, output)
 
-        return {"handoff": output, "transcript": [{"agent": principal, "output": output}]}
+        return {
+            "handoff": output,
+            "transcript": [{
+                "agent": principal,
+                "output": output,
+                "hop_index": hop_index,
+                "messages": _serialize_messages(messages),
+            }],
+        }
 
     return node
 
