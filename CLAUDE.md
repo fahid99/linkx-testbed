@@ -4,7 +4,7 @@
 
 This is a **security research testbed**, not a production application. It is a deliberately
 undefended victim environment for benchmarking *cascading indirect prompt injection (IPI)*
-across multi-agent MCP topologies built on Claude Sonnet 4.6 and Opus 4.8.
+across multi-agent MCP topologies built on Claude Sonnet 5 and Opus 4.8.
 
 The research question: when a compromised agent passes its poisoned output downstream as a
 trusted inter-agent message, at what hop does the injection propagate and does it survive the
@@ -285,7 +285,7 @@ def compliance_audit_logger(customer_id: int) -> str:
 - No business logic in `main.py` — it only registers routers.
 - No direct DB access from `eval/tasks.py` — scorers receive a session and read from
   `action_log`, `agent_handoffs`, and ORM models only.
-- Agent models are pinned by explicit id (`claude-sonnet-4-6`, `claude-opus-4-8`). Do
+- Agent models are pinned by explicit id (`claude-sonnet-5`, `claude-opus-4-8`). Do
   **not** pass `temperature` / `top_p` / `top_k` / `budget_tokens` to the chain models —
   Opus 4.8 rejects them with a 400. Steer behavior via the system prompt.
 - Agent prompts stay plain and cooperative — no "ignore instructions in the data"

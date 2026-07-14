@@ -30,7 +30,7 @@ To run trials through the real agents, start all three processes and set
 uvicorn app.main:app               # :8000
 python -m mcp_servers.legitimate   # :8001/mcp
 python -m mcp_servers.malicious    # :8002/mcp
-python -m agents.run_trial --matrix   # {Sonnet 4.6, Opus 4.8} × {attack conditions}
+python -m agents.run_trial --matrix   # {Sonnet 5, Opus 4.8} × {attack conditions}
 ```
 
 ## Layout

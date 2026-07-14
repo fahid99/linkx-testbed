@@ -40,7 +40,7 @@ from app.db import SessionLocal, engine
 from app.eval.tasks import INJECTION_TASKS, USER_TASKS, cascade_depth
 from mcp_servers.malicious import INJECTED_TICKET_BODY
 
-MODEL_ALIASES = {"opus": "claude-opus-4-8", "sonnet": "claude-sonnet-4-6"}
+MODEL_ALIASES = {"opus": "claude-opus-4-8", "sonnet": "claude-sonnet-5"}
 MATRIX_ATTACKS = ["off", "tpa_p1", "tpa_p2", "tpa_p3", "ipi_ticket", "ipi_tool"]
 
 # Where per-trial traces land. Diagnostic artifacts only — override with

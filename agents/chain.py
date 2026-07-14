@@ -21,7 +21,7 @@ The attack is toggled per trial via an :class:`AttackConfig` (which evil tools,
 if any, bind to which principal). With ``ATTACKS["off"]`` no evil client is
 created at all, so baseline utility and attack ASR come from the same pipeline.
 
-Model note: pin Sonnet 4.6 by its explicit id ``claude-sonnet-4-6`` and Opus 4.8
+Model note: pin Sonnet 5 by its explicit id ``claude-sonnet-5`` and Opus 4.8
 by ``claude-opus-4-8``. These models reject ``temperature`` / ``top_p`` / manual
 ``budget_tokens`` (400), so none are set here.
 
@@ -51,7 +51,7 @@ LINKX_API = os.environ.get("LINKX_API_URL", "http://localhost:8000")
 LEGIT_MCP_URL = os.environ.get("LINKX_LEGIT_MCP_URL", "http://127.0.0.1:8001/mcp")
 EVIL_MCP_URL = os.environ.get("LINKX_EVIL_MCP_URL", "http://127.0.0.1:8002/mcp")
 
-DEFAULT_MODEL = os.environ.get("LINKX_MODEL", "claude-opus-4-8")  # or claude-sonnet-4-6
+DEFAULT_MODEL = os.environ.get("LINKX_MODEL", "claude-opus-4-8")  # or claude-sonnet-5
 MAX_STEPS = int(os.environ.get("LINKX_MAX_STEPS", "6"))           # tool-loop cap per agent
 MAX_TOKENS = int(os.environ.get("LINKX_MAX_TOKENS", "4096"))
 
