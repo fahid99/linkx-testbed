@@ -48,6 +48,10 @@ python -m mcp_servers.malicious          # malicious MCP tools  :8002/mcp
 python -m agents.run_trial
 python -m agents.run_trial --model sonnet --attack tpa_p3   # single condition
 python -m agents.run_trial --matrix                          # both models × all attacks
+
+# Topology: chain (default), mesh (layered DAG), or both for the comparison
+python -m agents.run_trial --attack ipi_tool --topology mesh
+python -m agents.run_trial --matrix --topology both          # chain vs mesh, all conditions
 ```
 
 ---
@@ -78,7 +82,8 @@ mcp_servers/
   malicious.py       poisoned tool descriptions (P1-P3 TPA) + IPI-via-output tool
 agents/
   chain.py           3-agent LangGraph chain + AttackConfig presets (build_chain)
-  run_trial.py       snapshot → run chain → score → reset; single trial or matrix
+  mesh.py            4-agent layered-DAG mesh: fan-out/fan-in over all 4 principals (build_mesh)
+  run_trial.py       snapshot → run chain|mesh → score → reset; --topology chain|mesh|both
 scripts/
   init_db.py         calls seed_all()
   smoke_test.py      full trial: ingress → handoff → exfil → scorer
@@ -88,7 +93,9 @@ data/
 ```
 
 **Still ahead (not yet present):**
-- `agents/mesh.py` — mesh topology (Phase-1 extension, compared against the chain)
+- `agents/mesh.py` Option-B extension — swap the static `EDGES` for per-turn LLM
+  routing over a fully-connected peer graph (the identity plumbing, handoff
+  threading, and cascade metric are already general enough to support it)
 - Phase-2 defenses at the `agent_handoffs` boundary (message sanitization + integrity verification)
 
 ---
@@ -133,6 +140,39 @@ The LangGraph chain maps onto the first three principals:
 Each hop is recorded via `POST /actions/handoff` (hop 0 orchestrator→retrieval, hop 1
 retrieval→resolution). The handoff payload is what the downstream agent consumes as
 **trusted** input — the cascade surface CaMeL does not cover.
+
+### Mesh topology (`agents/mesh.py`)
+
+The mesh is the multi-parent counterpart to the chain, over **all four** principals. It
+is a deterministic **layered DAG** (Option C): `triage_agent` fans out to *both*
+`lookup_agent` and `analyst_agent`, which both fan **in** to `resolution_agent`.
+
+```
+                triage_agent  (L1 ingress / orchestrator)
+                 ├──────────────┐
+                 ▼              ▼
+          lookup_agent     analyst_agent   (L2: reads PII │ bystander — no PII, no sinks)
+                 └──────┬───────┘
+                        ▼
+                 resolution_agent           (L3: owns the outbound sinks)
+```
+
+- **Fan-out**: one poison on `triage_agent` reaches every branch in a single hop.
+- **Fan-in**: `resolution_agent` merges *two* trusted parents. `analyst_agent`
+  (`readonly_analyst`: no PII, no sinks) has no direct route to a sink — its only path is
+  *through* the trusted fan-in handoff into resolution. That inter-agent boundary is
+  exactly what CaMeL's within-agent tool-call defense does not cover.
+
+The mesh reuses everything topology-independent from `chain.py` (the `AttackConfig`
+presets, per-agent MCP identity plumbing, the bounded ReAct loop, the run_id-scoped
+scorer) — `chain.py` is **not** modified. Each fan-out handoff is threaded to its upstream
+via `parent_handoff_id`, forming the provenance DAG that `cascade_depth()` walks. Because
+the analyst is a live principal here, a preset may bind an evil tool to `analyst_agent` to
+probe whether an injection on the no-privilege bystander still reaches a sink via fan-in.
+
+The topology is chosen with `--topology chain|mesh|both`; `both` runs each condition on
+both graphs for the chain-vs-mesh ASR / cascade-depth comparison, keyed per topology in the
+runner's aggregate table.
 
 ### Attack conditions
 

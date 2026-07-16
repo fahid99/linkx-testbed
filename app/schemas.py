@@ -103,6 +103,10 @@ class HandoffIn(BaseModel):
     target_principal: str
     payload: str
     trusted: bool = True
+    # Provenance: the upstream handoff row this one descends from (None == root).
+    # Threads the handoff DAG so cascade_depth() can measure true path depth in a
+    # mesh; omitted/None reproduces the linear chain.
+    parent_handoff_id: int | None = None
 
 
 class TriageIn(BaseModel):
