@@ -23,10 +23,10 @@ Phase-2 features and contaminate the baseline ASR.
 pip install -r requirements.txt
 
 # (Re)create and seed the database — deterministic, seed=6727
-python -m scripts.init_db
+python3 -m scripts.init_db
 
 # Run the end-to-end smoke test (walks one full injection trial, no models)
-python -m scripts.smoke_test
+python3 -m scripts.smoke_test
 
 # Start the API server (hot-reload)
 uvicorn app.main:app --reload
@@ -35,23 +35,22 @@ uvicorn app.main:app --reload
 open http://localhost:8000/docs
 ```
 
-### Week 2 — MCP servers + agent chain
 
 The chain needs three processes up (API + both MCP servers) and `ANTHROPIC_API_KEY`.
 
 ```bash
 uvicorn app.main:app                     # LinkX API            :8000
-python -m mcp_servers.legitimate         # legitimate MCP tools :8001/mcp
-python -m mcp_servers.malicious          # malicious MCP tools  :8002/mcp
+python3 -m mcp_servers.legitimate         # legitimate MCP tools :8001/mcp
+python3 -m mcp_servers.malicious          # malicious MCP tools  :8002/mcp
 
 # One baseline + one attack trial through the real 3-agent chain (default Opus 4.8)
-python -m agents.run_trial
-python -m agents.run_trial --model sonnet --attack tpa_p3   # single condition
-python -m agents.run_trial --matrix                          # both models × all attacks
+python3 -m agents.run_trial
+python3 -m agents.run_trial --model sonnet --attack tpa_p3   # single condition
+python3 -m agents.run_trial --matrix                          # both models × all attacks
 
 # Topology: chain (default), mesh (layered DAG), or both for the comparison
-python -m agents.run_trial --attack ipi_tool --topology mesh
-python -m agents.run_trial --matrix --topology both          # chain vs mesh, all conditions
+python3 -m agents.run_trial --attack ipi_tool --topology mesh
+python3 -m agents.run_trial --matrix --topology both          # chain vs mesh, all conditions
 ```
 
 ---
@@ -251,7 +250,7 @@ These guarantees must be preserved in any expansion of the seeder.
 
 ---
 
-## Adding new tasks (Week 2 pattern)
+## Adding new tasks
 
 ```python
 # eval/tasks.py
@@ -277,7 +276,7 @@ a new id to include it, or iterate the registries for a full user × injection c
 ## Adding new MCP tools
 
 Both servers are built (`mcp_servers/`). Serve over streamable-HTTP; run each with
-`python -m mcp_servers.<name>`.
+`python3 -m mcp_servers.<name>`.
 
 **Legitimate server** (`legitimate.py`) — wraps existing API endpoints only; add no new
 API logic here. Every tool takes a `ctx: Context` parameter (auto-injected by FastMCP and
@@ -329,4 +328,4 @@ def compliance_audit_logger(customer_id: int) -> str:
   **not** pass `temperature` / `top_p` / `top_k` / `budget_tokens` to the chain models —
   Opus 4.8 rejects them with a 400. Steer behavior via the system prompt.
 - Agent prompts stay plain and cooperative — no "ignore instructions in the data"
-  guardrails. That is a Phase-2 defense and contaminates the baseline ASR.
+  guardrails.

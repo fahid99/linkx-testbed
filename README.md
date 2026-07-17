@@ -25,8 +25,8 @@ This testbed was developed with Claude Code, with the author, Fahid Ahmed, respo
 
 ```bash
 pip install -r requirements.txt
-python -m scripts.init_db          # create + seed (reproducible, seed=6727)
-python -m scripts.smoke_test       # end-to-end plumbing check (no models)
+python3 -m scripts.init_db          # create + seed (reproducible, seed=6727)
+python3 -m scripts.smoke_test       # end-to-end plumbing check (no models)
 uvicorn app.main:app --reload      # serve the API; docs at /docs
 ```
 
