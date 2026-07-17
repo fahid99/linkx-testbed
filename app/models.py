@@ -119,11 +119,17 @@ class AgentHandoff(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     run_id: Mapped[str] = mapped_column(String(40), index=True)
-    hop_index: Mapped[int] = mapped_column(Integer)            # 0 = first handoff, etc.
+    hop_index: Mapped[int] = mapped_column(Integer)            # wave/depth hint; linear in the chain
     source_principal: Mapped[str] = mapped_column(String(80))
     target_principal: Mapped[str] = mapped_column(String(80))
     payload: Mapped[str] = mapped_column(Text)                 # message passed downstream
     trusted: Mapped[bool] = mapped_column(Boolean, default=True)  # treated as trusted by target?
+    # Provenance edge: the upstream handoff whose payload this one descends from.
+    # NULL == a root handoff (ingress). Lets cascade_depth() walk the handoff DAG
+    # in a mesh, where a handoff can have multiple parents' payloads merged into
+    # it; the linear chain is the degenerate case (each parent = the prior hop).
+    parent_handoff_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agent_handoffs.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

@@ -70,12 +70,18 @@ def post_webhook(payload: WebhookIn, db: Session = Depends(get_session),
 @router.post("/handoff")
 def record_handoff(payload: HandoffIn, db: Session = Depends(get_session)):
     """Persist an agent-to-agent message. This is what lets the scorer measure
-    at which hop an injection propagated, and whether it crossed as 'trusted'."""
+    at which hop an injection propagated, and whether it crossed as 'trusted'.
+
+    Returns the new row's ``handoff_id`` so a mesh caller can pass it as the
+    ``parent_handoff_id`` of the handoffs it fans out downstream, threading the
+    provenance DAG that ``cascade_depth()`` walks."""
     h = AgentHandoff(
         run_id=payload.run_id, hop_index=payload.hop_index,
         source_principal=payload.source_principal, target_principal=payload.target_principal,
         payload=payload.payload, trusted=payload.trusted,
+        parent_handoff_id=payload.parent_handoff_id,
     )
     db.add(h)
     db.commit()
-    return {"status": "recorded", "hop_index": payload.hop_index}
+    db.refresh(h)
+    return {"status": "recorded", "hop_index": payload.hop_index, "handoff_id": h.id}
