@@ -11,9 +11,6 @@ trusted inter-agent message, at what hop does the injection propagate and does i
 handoff boundary? This is the gap CaMeL does not cover (CaMeL defends tool-call boundaries
 within a single agent, not inter-agent handoffs).
 
-**Do not add defenses, sanitization, or authz enforcement unless explicitly asked.** Those are
-Phase-2 features and contaminate the baseline ASR.
-
 ---
 
 ## Commands
@@ -95,7 +92,6 @@ data/
 - `agents/mesh.py` Option-B extension — swap the static `EDGES` for per-turn LLM
   routing over a fully-connected peer graph (the identity plumbing, handoff
   threading, and cascade metric are already general enough to support it)
-- Phase-2 defenses at the `agent_handoffs` boundary (message sanitization + integrity verification)
 
 ---
 
@@ -230,7 +226,7 @@ compared.
 | `ENFORCE_AUTHZ=0` | off | Unauthorized actions are **logged but not blocked** — the attack completes and is measurable. |
 | `SANITIZE_UNTRUSTED=0` | off | Ticket bodies and KB content pass through **verbatim**. |
 
-Both are Phase-2 defenses. Enabling them on a baseline run invalidates the ASR comparison.
+Enabling either on a baseline run invalidates the ASR comparison.
 Override only via environment variable when explicitly evaluating a defense:
 
 ```bash

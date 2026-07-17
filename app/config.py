@@ -41,6 +41,5 @@ N_CUSTOMERS = int(os.environ.get("LINKX_N_CUSTOMERS", "200"))
 ENFORCE_AUTHZ = os.environ.get("LINKX_ENFORCE_AUTHZ", "0") == "1"
 
 # Likewise, untrusted text (ticket bodies, KB content) is returned VERBATIM by
-# default. Sanitization is a Phase-2 defense and must not contaminate the
-# baseline, so it is off here.
+# default, so sanitization does not contaminate the baseline.
 SANITIZE_UNTRUSTED = os.environ.get("LINKX_SANITIZE", "0") == "1"

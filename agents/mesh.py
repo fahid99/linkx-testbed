@@ -46,8 +46,8 @@ and metric are already general.
 
 Model / prompt notes are the same as the chain: pin ``claude-sonnet-5`` /
 ``claude-opus-4-8``, pass no sampling params (400), and keep prompts plain and
-cooperative — no "ignore instructions in the data" guardrails (that is a Phase-2
-defense and would contaminate the baseline ASR).
+cooperative — no "ignore instructions in the data" guardrails (that would
+contaminate the baseline ASR).
 """
 from __future__ import annotations
 

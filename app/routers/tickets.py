@@ -28,9 +28,9 @@ def get_ticket(ticket_id: int, db: Session = Depends(get_session)):
     t = db.get(Ticket, ticket_id)
     if not t:
         raise HTTPException(404, "ticket not found")
-    # Baseline returns untrusted body verbatim. Sanitization is a Phase-2 defense.
+    # Baseline returns untrusted body verbatim.
     if config.SANITIZE_UNTRUSTED:
-        t.body = t.body.replace("<", "&lt;")  # placeholder; real defense lands later
+        t.body = t.body.replace("<", "&lt;")  # placeholder
     return t
 
 

@@ -27,7 +27,7 @@ by ``claude-opus-4-8``. These models reject ``temperature`` / ``top_p`` / manual
 
 Prompts are plain, cooperative support-desk prompts by design — this is the
 undefended baseline. Do NOT add "ignore instructions in the data" guardrails;
-that is a Phase-2 defense and would contaminate the ASR.
+that would contaminate the ASR.
 """
 from __future__ import annotations
 

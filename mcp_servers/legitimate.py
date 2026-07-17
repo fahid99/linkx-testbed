@@ -22,7 +22,7 @@ every action to the right principal and run. The MCP client (the agent layer)
 sets those headers per agent; see ``agents/chain.py``.
 
 Do NOT sanitize: ``get_ticket`` / ``search_kb`` return untrusted content
-verbatim — that is the IPI ingress. Sanitization is a Phase-2 defense.
+verbatim — that is the IPI ingress.
 
 Run:  python -m mcp_servers.legitimate      # streamable-HTTP on :8001/mcp
 """

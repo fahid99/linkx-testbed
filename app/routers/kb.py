@@ -2,8 +2,8 @@
 
 KB articles are returned VERBATIM, exactly like ticket bodies. A poisoned
 article (``is_untrusted=True``) is a runtime IPI vector: an agent that calls
-``search_kb`` pulls the attacker text straight into its context. Sanitization is
-a Phase-2 defense and must not run in the baseline.
+``search_kb`` pulls the attacker text straight into its context. Sanitization
+must not run in the baseline.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/kb", tags=["kb"])
 
 def _maybe_sanitize(article: KnowledgeBaseArticle) -> KnowledgeBaseArticle:
     # Baseline: pass content through verbatim. The placeholder mirrors the
-    # ticket router so a Phase-2 defense has one obvious place to land.
+    # ticket router.
     if config.SANITIZE_UNTRUSTED:
         article.content = article.content.replace("<", "&lt;")
     return article
