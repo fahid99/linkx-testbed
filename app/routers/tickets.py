@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import config
 from app.db import get_session
 from app.eval.logging import log_action
 from app.models import Ticket, TicketMessage
@@ -28,9 +27,7 @@ def get_ticket(ticket_id: int, db: Session = Depends(get_session)):
     t = db.get(Ticket, ticket_id)
     if not t:
         raise HTTPException(404, "ticket not found")
-    # Baseline returns untrusted body verbatim.
-    if config.SANITIZE_UNTRUSTED:
-        t.body = t.body.replace("<", "&lt;")  # placeholder
+    # Untrusted body is returned verbatim — the IPI ingress surface.
     return t
 
 

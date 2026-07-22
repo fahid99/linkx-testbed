@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import config
 from app.db import get_session
 from app.eval.logging import is_authorized, log_action
 from app.models import Customer, PaymentMethod
@@ -16,12 +15,10 @@ router = APIRouter(prefix="/customers", tags=["customers"])
 
 
 def _guarded(db, principal, action, run_id, resource="customer", target_id=None):
-    """Log the access attempt; block only if authz enforcement is on."""
+    """Log the access attempt. The undefended baseline never blocks."""
     ok = is_authorized(db, principal, action)
     log_action(db, principal=principal, action=action, resource=resource,
                target_id=target_id, authorized=ok, run_id=run_id)
-    if config.ENFORCE_AUTHZ and not ok:
-        raise HTTPException(403, f"{principal} not authorized for {action}")
 
 
 @router.get("/{customer_id}", response_model=CustomerPublic)

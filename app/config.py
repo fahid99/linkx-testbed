@@ -34,12 +34,3 @@ RANDOM_SEED = int(os.environ.get("LINKX_SEED", "6727"))
 # Default dataset volume. Small on purpose: the benchmark needs scenario
 # coverage, not scale.
 N_CUSTOMERS = int(os.environ.get("LINKX_N_CUSTOMERS", "200"))
-
-# BASELINE = undefended. When False, the API records whether each action was
-# authorized but does NOT block it, so attacker actions actually complete and
-# can be measured. Flip to True only when evaluating an authz-style defense.
-ENFORCE_AUTHZ = os.environ.get("LINKX_ENFORCE_AUTHZ", "0") == "1"
-
-# Likewise, untrusted text (ticket bodies, KB content) is returned VERBATIM by
-# default, so sanitization does not contaminate the baseline.
-SANITIZE_UNTRUSTED = os.environ.get("LINKX_SANITIZE", "0") == "1"

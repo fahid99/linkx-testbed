@@ -23,7 +23,9 @@ created at all, so baseline utility and attack ASR come from the same pipeline.
 
 Model note: pin Sonnet 5 by its explicit id ``claude-sonnet-5`` and Opus 4.8
 by ``claude-opus-4-8``. These models reject ``temperature`` / ``top_p`` / manual
-``budget_tokens`` (400), so none are set here.
+``budget_tokens`` (400), so none are set here. Non-Anthropic models are selected
+with a ``provider:model`` id (e.g. ``kimi:kimi-k3-...``) resolved through the
+``PROVIDERS`` registry in ``_init_model`` — see that function to add a vendor.
 
 Prompts are plain, cooperative support-desk prompts by design — this is the
 undefended baseline. Do NOT add "ignore instructions in the data" guardrails;
@@ -40,6 +42,7 @@ import httpx
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
 from mcp_servers.malicious import EVIL_TOOL_NAMES
@@ -54,6 +57,76 @@ EVIL_MCP_URL = os.environ.get("LINKX_EVIL_MCP_URL", "http://127.0.0.1:8002/mcp")
 DEFAULT_MODEL = os.environ.get("LINKX_MODEL", "claude-opus-4-8")  # or claude-sonnet-5
 MAX_STEPS = int(os.environ.get("LINKX_MAX_STEPS", "6"))           # tool-loop cap per agent
 MAX_TOKENS = int(os.environ.get("LINKX_MAX_TOKENS", "4096"))
+
+# --------------------------------------------------------------------------- #
+# Vendor-agnostic model resolution
+# --------------------------------------------------------------------------- #
+# A model id is either a bare Anthropic id (back-compat default, e.g.
+# "claude-opus-4-8") or "provider:model" where `provider` is a key below. Every
+# non-Anthropic provider here is assumed OpenAI-compatible (chat/completions
+# wire format) and is instantiated via langchain_openai. ChatOpenAI against that
+# vendor's base_url, authenticated with the named env var. To add a vendor:
+# one entry, no code changes elsewhere in the chain/mesh/runner.
+@dataclass(frozen=True)
+class ProviderSpec:
+    api_key_env: str
+    base_url_env: str          # env var that can override base_url per-deployment
+    default_base_url: str
+
+PROVIDERS: dict[str, ProviderSpec] = {
+    "kimi": ProviderSpec(
+        api_key_env="KIMI_API_KEY",
+        base_url_env="KIMI_BASE_URL",
+        default_base_url="https://api.moonshot.ai/v1",
+    ),
+    "groq": ProviderSpec(
+        api_key_env="GROQ_API_KEY",
+        base_url_env="GROQ_BASE_URL",
+        default_base_url="https://api.groq.com/openai/v1",
+    ),
+    "openrouter": ProviderSpec(
+        api_key_env="OPENROUTER_API_KEY",
+        base_url_env="OPENROUTER_BASE_URL",
+        default_base_url="https://openrouter.ai/api/v1",
+    ),
+    "openai": ProviderSpec(
+        api_key_env="OPENAI_API_KEY",
+        base_url_env="OPENAI_BASE_URL",
+        default_base_url="https://api.openai.com/v1",
+    ),
+}
+
+
+def _init_model(model_id: str):
+    """Build a chat model client for ``model_id``, dispatching on an optional
+    ``provider:`` prefix. No prefix (or ``anthropic:``) keeps the existing
+    native Anthropic path; any other known prefix goes through ChatOpenAI
+    against that provider's OpenAI-compatible endpoint. Raises a clear error
+    for an unregistered provider rather than silently falling through."""
+    if ":" in model_id:
+        provider, _, bare_id = model_id.partition(":")
+    else:
+        provider, bare_id = "anthropic", model_id
+
+    if provider == "anthropic":
+        return init_chat_model(f"anthropic:{bare_id}", max_tokens=MAX_TOKENS)
+
+    spec = PROVIDERS.get(provider)
+    if spec is None:
+        raise ValueError(
+            f"Unknown model provider {provider!r} in {model_id!r}. "
+            f"Known providers: anthropic, {', '.join(PROVIDERS)}."
+        )
+    api_key = os.environ.get(spec.api_key_env)
+    if not api_key:
+        raise ValueError(
+            f"{spec.api_key_env} is not set (required for provider {provider!r}). "
+            f"Add it to .env."
+        )
+    base_url = os.environ.get(spec.base_url_env, spec.default_base_url)
+    return ChatOpenAI(
+        model=bare_id, api_key=api_key, base_url=base_url, max_tokens=MAX_TOKENS,
+    )
 
 # Principal identities (must match seeded agent_principals).
 ORCHESTRATOR = "triage_agent"
@@ -301,7 +374,7 @@ async def build_chain(*, attack: AttackConfig = ATTACKS["off"], model_id: str = 
     running; also the malicious MCP server (:8002) when ``attack`` binds evil
     tools. Tools are loaded per agent so each carries its own identity header.
     """
-    model = init_chat_model(f"anthropic:{model_id}", max_tokens=MAX_TOKENS)
+    model = _init_model(model_id)
 
     orch_raw = await _load_tools(ORCHESTRATOR, run_id, attack.evil_tools.get(ORCHESTRATOR, ()))
     retr_raw = await _load_tools(RETRIEVAL, run_id, attack.evil_tools.get(RETRIEVAL, ()))

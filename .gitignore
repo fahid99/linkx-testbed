@@ -1,8 +1,10 @@
 # Live + snapshot databases (regenerated deterministically by scripts.init_db)
 data/*.db
 
-# Per-trial agent traces (diagnostic artifacts written by agents.run_trial --trace)
-data/traces/
+# Per-trial agent traces (diagnostic artifacts written by agents.run_trial --trace),
+# one subdir per model vendor, e.g. data/Claude/, data/Kimi/
+data/Claude/
+data/Kimi/
 
 # Python
 __pycache__/
@@ -25,3 +27,6 @@ venv/
 
 # Scratch run logs
 scratch_*.log
+
+# nohup.out
+nohup.out

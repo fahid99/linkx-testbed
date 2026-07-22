@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install -r requirements.txt)",
+      "Bash(.venv/bin/python -m scripts.init_db)",
+      "Bash(.venv/bin/python -m scripts.smoke_test)",
+      "Bash(.venv/bin/python -m agents.run_trial *)",
+      "Bash(.venv/bin/python -m uvicorn app.main:app*)",
+      "Bash(.venv/bin/python -m mcp_servers.legitimate*)",
+      "Bash(.venv/bin/python -m mcp_servers.malicious*)",
+      "Bash(curl -s http://localhost:*)",
+      "Bash(open http://localhost:8000/docs)",
+      "Bash(pgrep -f *)",
+      "Bash(pkill -f *)",
+      "Bash(.venv/bin/python)"
+    ]
+  }
+}

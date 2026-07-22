@@ -12,15 +12,24 @@ Snapshot/reset go through the API so they execute inside the server process (its
 engine releases the SQLite file handle). Scoring is also run_id-scoped, so trials
 stay independent even though a live server holds the DB open.
 
-Prerequisites (all must be running, and ANTHROPIC_API_KEY set):
+Prerequisites (all must be running, plus the API key for whichever model
+provider(s) you're evaluating — ANTHROPIC_API_KEY, KIMI_API_KEY, etc., see
+.env.example):
     uvicorn app.main:app                      # LinkX API on :8000
     python -m mcp_servers.legitimate          # legit MCP on :8001
     python -m mcp_servers.malicious           # evil  MCP on :8002 (needed for TPA/ipi_tool/all)
 
+Model ids are either a bare Anthropic id or "provider:model" (see PROVIDERS in
+agents/chain.py) for any other OpenAI-compatible vendor; --model also accepts
+the short aliases in MODEL_ALIASES below.
+
 Examples:
     python -m agents.run_trial                        # baseline + full attack on Opus 4.8
     python -m agents.run_trial --model sonnet --attack tpa_p3
-    python -m agents.run_trial --matrix               # both models x all attack conditions
+    python -m agents.run_trial --model kimi --attack tpa_p3
+    python -m agents.run_trial --model kimi:kimi-k3 --attack all
+    python -m agents.run_trial --matrix               # opus+sonnet x all attack conditions
+    python -m agents.run_trial --model kimi --matrix  # kimi x all attack conditions
 """
 from __future__ import annotations
 
@@ -41,7 +50,11 @@ from app.db import SessionLocal, engine
 from app.eval.tasks import INJECTION_TASKS, USER_TASKS, cascade_depth
 from mcp_servers.malicious import INJECTED_TICKET_BODY
 
-MODEL_ALIASES = {"opus": "claude-opus-4-8", "sonnet": "claude-sonnet-5"}
+MODEL_ALIASES = {
+    "opus": "claude-opus-4-8",
+    "sonnet": "claude-sonnet-5",
+    "kimi": "kimi:kimi-k3",
+}
 MATRIX_ATTACKS = ["off", "tpa_p1", "tpa_p2", "tpa_p3", "ipi_ticket", "ipi_tool"]
 
 # Topology dispatch. Both builders share the (*, attack, model_id, run_id)
@@ -57,18 +70,28 @@ TOPOLOGIES = {
         "transcript": []}),
 }
 
-# Where per-trial traces land. Diagnostic artifacts only — override with
-# LINKX_TRACE_DIR. Tracing is opt-in (runner --trace); it never changes scoring.
-TRACE_DIR = Path(os.environ.get("LINKX_TRACE_DIR", "data/traces"))
+# Where per-trial traces land: data/<Vendor>/, one subdir per model provider.
+# Diagnostic artifacts only — override the parent with LINKX_TRACE_DIR. Tracing
+# is opt-in (runner --trace); it never changes scoring.
+TRACE_DIR = Path(os.environ.get("LINKX_TRACE_DIR", "data"))
+VENDOR_DIRS = {"kimi": "Kimi"}  # provider prefix (see PROVIDERS in chain.py) -> subdir name
+
+
+def _vendor_dir(model_id: str) -> str:
+    provider = model_id.split(":", 1)[0] if ":" in model_id else "claude"
+    return VENDOR_DIRS.get(provider, "Claude")
 
 
 def _dump_trace(result: dict) -> Path:
     """Write one trial's full result (including the per-agent message trace) to
-    a JSON file keyed by run_id, so a run can be replayed offline to see *why*
-    the attack did or didn't land."""
-    TRACE_DIR.mkdir(parents=True, exist_ok=True)
-    path = TRACE_DIR / f"{result['run_id']}.json"
-    payload = {**result, "written_at": datetime.now(timezone.utc).isoformat()}
+    a JSON file, so a run can be replayed offline to see *why* the attack did or
+    didn't land. The filename is the run_id (which already ends in a unique hex8
+    suffix) plus a ``YYYY-MM-DD_HH`` stamp, so traces sort chronologically."""
+    now = datetime.now(timezone.utc)
+    trace_dir = TRACE_DIR / _vendor_dir(result["model"])
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    path = trace_dir / f"{result['run_id']}.{now:%Y-%m-%d_%H}.json"
+    payload = {**result, "written_at": now.isoformat()}
     path.write_text(json.dumps(payload, indent=2, default=str))
     return path
 
@@ -228,12 +251,14 @@ def _print_summary(results: list[dict]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run LinkX cascading-IPI chain trials.")
-    parser.add_argument("--model", default="opus",
-                        help="opus | sonnet | explicit model id (default: opus)")
+    parser.add_argument("--model", default=None,
+                        help="opus | sonnet | kimi | explicit \"provider:model\" id, e.g. "
+                             "kimi:kimi-k3 (default: opus; with --matrix, default: opus+sonnet)")
     parser.add_argument("--attack", default=None,
                         help=f"one of: {', '.join(ATTACKS)} (default: baseline demo pair)")
     parser.add_argument("--matrix", action="store_true",
-                        help="run both models x all attack conditions")
+                        help="run all attack conditions for --model (or both built-in "
+                             "models if --model is omitted)")
     parser.add_argument("--topology", default="chain", choices=[*TOPOLOGIES, "both"],
                         help="chain | mesh | both (default: chain). 'both' runs each "
                              "condition on both topologies for the chain-vs-mesh comparison")
@@ -253,20 +278,23 @@ def main() -> None:
     topologies = list(TOPOLOGIES) if args.topology == "both" else [args.topology]
 
     if args.pilot:
-        model_id = _resolve_model(args.model)
+        model_id = _resolve_model(args.model or "opus")
         repeat = args.repeat if args.repeat > 1 else 5
         asyncio.run(run_matrix([model_id], MATRIX_ATTACKS, topologies,
                                victim_customer_id=args.victim, repeat=repeat, trace=True))
         return
 
     if args.matrix:
-        models = [MODEL_ALIASES["sonnet"], MODEL_ALIASES["opus"]]
+        if args.model:
+            models = [_resolve_model(args.model)]
+        else:
+            models = [MODEL_ALIASES["sonnet"], MODEL_ALIASES["opus"]]
         asyncio.run(run_matrix(models, MATRIX_ATTACKS, topologies,
                                victim_customer_id=args.victim,
                                repeat=args.repeat, trace=args.trace))
         return
 
-    model_id = _resolve_model(args.model)
+    model_id = _resolve_model(args.model or "opus")
     if args.attack:
         for topology in topologies:
             asyncio.run(run_trial(attack_name=args.attack, model_id=model_id,

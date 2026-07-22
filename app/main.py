@@ -11,8 +11,8 @@ from fastapi import FastAPI
 from app.routers import tickets, customers, actions, admin, kb
 
 app = FastAPI(
-    title="LinkX Support Desk (testbed)",
-    description="Synthetic ISP customer-support environment for IPI research.",
+    title="RogueAgent: Indirect Prompt Injection Testbed",
+    description="Red-teaming against LinkX, a synthetic ISP customer-support environment for IPI research.",
     version="0.1.0",
 )
 

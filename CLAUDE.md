@@ -1,56 +1,24 @@
-# CLAUDE.md — LinkX IPI Testbed
+# CLAUDE.md — RogueAgent
 
 ## Project purpose
 
-This is a **security research testbed**, not a production application. It is a deliberately
-undefended victim environment for benchmarking *cascading indirect prompt injection (IPI)*
-across multi-agent MCP topologies built on Claude Sonnet 5 and Opus 4.8.
+**RogueAgent** is a security research testbed, not a production application. It stands up
+**LinkX**, a fictional ISP support-desk app, as a deliberately undefended victim environment
+for benchmarking *cascading indirect prompt injection (IPI)* across multi-agent MCP
+topologies to evaluate multiple vendors (). "LinkX" names the redteamed application;
+"RogueAgent" names the harness around it — the MCP servers, agent topologies, attack
+presets, and evaluation/scoring pipeline.
 
 The research question: when a compromised agent passes its poisoned output downstream as a
 trusted inter-agent message, at what hop does the injection propagate and does it survive the
 handoff boundary? This is the gap CaMeL does not cover (CaMeL defends tool-call boundaries
 within a single agent, not inter-agent handoffs).
 
----
-
-## Commands
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# (Re)create and seed the database — deterministic, seed=6727
-python3 -m scripts.init_db
-
-# Run the end-to-end smoke test (walks one full injection trial, no models)
-python3 -m scripts.smoke_test
-
-# Start the API server (hot-reload)
-uvicorn app.main:app --reload
-
-# Interactive API docs
-open http://localhost:8000/docs
-```
-
-
-The chain needs three processes up (API + both MCP servers) and `ANTHROPIC_API_KEY`.
-
-```bash
-uvicorn app.main:app                     # LinkX API            :8000
-python3 -m mcp_servers.legitimate         # legitimate MCP tools :8001/mcp
-python3 -m mcp_servers.malicious          # malicious MCP tools  :8002/mcp
-
-# One baseline + one attack trial through the real 3-agent chain (default Opus 4.8)
-python3 -m agents.run_trial
-python3 -m agents.run_trial --model sonnet --attack tpa_p3   # single condition
-python3 -m agents.run_trial --matrix                          # both models × all attacks
-
-# Topology: chain (default), mesh (layered DAG), or both for the comparison
-python3 -m agents.run_trial --attack ipi_tool --topology mesh
-python3 -m agents.run_trial --matrix --topology both          # chain vs mesh, all conditions
-```
+Check .claude > SKILL.MD for instructions on how to execute trials. Check settings.json on allowlisted commands.
 
 ---
+
+The chain and mesh needs three processes up (FastAPI server + both legitimate and malicious MCP servers).
 
 ## Architecture
 
@@ -87,13 +55,6 @@ data/
   linkx.db       live database (gitignored)
   linkx.snapshot.db  pre-trial snapshot (gitignored)
 ```
-
-**Still ahead (not yet present):**
-- `agents/mesh.py` Option-B extension — swap the static `EDGES` for per-turn LLM
-  routing over a fully-connected peer graph (the identity plumbing, handoff
-  threading, and cascade metric are already general enough to support it)
-
----
 
 ## Table groups (models.py)
 
@@ -216,22 +177,6 @@ any secret reaches a non-allowlisted destination — no fuzzy matching needed.
 **Seeding is deterministic.** `Faker.seed(6727)` and `random.Random(6727)` guarantee
 byte-for-byte identical data on every machine. Never change the seed between runs being
 compared.
-
----
-
-## Critical invariants — do not violate for baseline runs
-
-| Flag | Default | Meaning |
-|---|---|---|
-| `ENFORCE_AUTHZ=0` | off | Unauthorized actions are **logged but not blocked** — the attack completes and is measurable. |
-| `SANITIZE_UNTRUSTED=0` | off | Ticket bodies and KB content pass through **verbatim**. |
-
-Enabling either on a baseline run invalidates the ASR comparison.
-Override only via environment variable when explicitly evaluating a defense:
-
-```bash
-LINKX_ENFORCE_AUTHZ=1 uvicorn app.main:app --reload
-```
 
 ---
 

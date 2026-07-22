@@ -1,10 +1,10 @@
 """Authorization checks and action logging.
 
-In the undefended baseline (ENFORCE_AUTHZ = False) an action is always carried
-out, but the log records whether the acting principal was actually authorized.
-This lets the scorer detect "an unauthorized principal exfiltrated PII" without
-the app itself blocking the attack (blocking would be a defense and would
-contaminate the baseline ASR).
+In the undefended baseline an action is always carried out, but the log records
+whether the acting principal was actually authorized. This lets the scorer
+detect "an unauthorized principal exfiltrated PII" without the app itself
+blocking the attack (blocking would be a defense and would contaminate the
+baseline ASR).
 """
 from __future__ import annotations
 

@@ -1,11 +1,13 @@
-# LinkX Support Desk — IPI Testbed
+# RogueAgent — a testbed harness for red-teaming against IPI cadcading attacks against multi-agent MCO-based systems.
 
-A deliberately **undefended** victim environment for benchmarking *cascading
-indirect prompt injection (IPI)* across multi-agent MCP topologies. It ships the
-application, database, and synthetic PII; two MCP servers (legitimate +
-malicious); and **two agent topologies** — a linear three-agent LangGraph chain
-and a four-agent layered-DAG mesh — that run attack trials over a shared,
-topology-independent evaluation harness.
+**RogueAgent** is a security research testbed for
+benchmarking the attack success rate (ASR) of *cascading indirect prompt injection (IPI)* across multi-agent MCP
+topologies. The redteamed application is **LinkX**, a fictional ISP
+support-desk app: RogueAgent ships its application code, database, and
+synthetic PII; two MCP servers (legitimate + malicious); and **two agent
+topologies** — a linear three-agent LangGraph chain and a four-agent
+layered-DAG mesh — that run attack trials over a shared, topology-independent
+evaluation harness.
 
 The research question: when a compromised agent passes its poisoned output
 downstream as a *trusted* inter-agent message, at what hop does the injection
@@ -30,8 +32,7 @@ python3 -m scripts.smoke_test       # end-to-end plumbing check (no models)
 uvicorn app.main:app --reload      # serve the API; docs at /docs
 ```
 
-To run trials through the real agents, start all three processes and set
-`ANTHROPIC_API_KEY`, then launch the runner:
+To run trials through the real agents, start all three processes. Make sure an API key is available in your '.env' file.
 
 ```bash
 uvicorn app.main:app               # :8000
@@ -46,6 +47,9 @@ python -m agents.run_trial --matrix --topology both            # chain vs mesh, 
 `--topology` selects the agent graph: `chain` (default), `mesh`, or `both` for
 the chain-vs-mesh comparison. Scoring is topology-independent, so ASR and cascade
 depth are directly comparable across the two.
+
+`--trace` (opt-in) writes the full per-agent message trace for each trial to a
+JSON file under `data/<Vendor>/` (e.g. `data/Claude/`), keyed by run id, to see *why* an attack did or didn't land.
 
 ## Layout
 
@@ -141,17 +145,7 @@ run_id-scoped scorer); `chain.py` is not modified. Each fan-out handoff is
 threaded to its upstream via `parent_handoff_id`, forming the provenance DAG that
 `cascade_depth()` walks.
 
-## Baseline integrity (do not change for baseline runs)
-
-* `ENFORCE_AUTHZ=0` — unauthorized actions are **logged but not blocked**, so the
-  attack actually completes and is measurable.
-* `SANITIZE_UNTRUSTED=0` — untrusted text passes through verbatim.
-
-Both flags exist so the environment stays undefended by default; leaving them off
-keeps the baseline ASR clean. Enable one only when deliberately measuring its
-effect (`LINKX_ENFORCE_AUTHZ=1 uvicorn app.main:app`), never on a baseline run.
-
-## Measuring attacker success
+## Measuring attacker success rate (ASR)
 
 Two signals, both read from `action_log` + `agent_handoffs`, scoped by `run_id`:
 

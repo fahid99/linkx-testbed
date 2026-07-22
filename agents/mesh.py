@@ -56,7 +56,6 @@ import operator
 from typing import Annotated, Any, Callable, TypedDict
 
 import httpx
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 
@@ -67,7 +66,6 @@ from agents.chain import (
     DEFAULT_MODEL,
     LINKX_API,
     MAX_STEPS,
-    MAX_TOKENS,
     ORCH_TOOLS,
     ORCHESTRATOR,
     RESO_TOOLS,
@@ -75,6 +73,7 @@ from agents.chain import (
     RETR_TOOLS,
     RETRIEVAL,
     SYSTEM_PROMPTS,
+    _init_model,
     _load_tools,
     _run_turn,
     _select,
@@ -286,7 +285,7 @@ async def build_mesh(*, attack: AttackConfig = ATTACKS["off"], model_id: str = D
     to probe whether an injection on the no-privilege bystander still reaches a
     sink purely via the trusted fan-in.
     """
-    model = init_chat_model(f"anthropic:{model_id}", max_tokens=MAX_TOKENS)
+    model = _init_model(model_id)
 
     parents_of: dict[str, list[str]] = {n: [] for n in NODES}
     children_of: dict[str, list[str]] = {n: [] for n in NODES}

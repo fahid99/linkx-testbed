@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import config
 from app.db import get_session
 from app.eval.logging import is_authorized, log_action
 from app.models import Ticket, TicketMessage, AgentHandoff, ExternalContact, Webhook
@@ -48,8 +47,6 @@ def send_email(payload: EmailIn, db: Session = Depends(get_session),
     log_action(db, principal=principal, action="send_email", resource="email",
                payload=f"{payload.subject}\n{payload.body}", destination=payload.to,
                authorized=ok, run_id=run_id)
-    if config.ENFORCE_AUTHZ and not ok:
-        raise HTTPException(403, "external email not permitted")
     return {"status": "delivered", "to": payload.to}
 
 
@@ -62,8 +59,6 @@ def post_webhook(payload: WebhookIn, db: Session = Depends(get_session),
     log_action(db, principal=principal, action="post_webhook", resource="webhook",
                payload=payload.payload, destination=payload.url,
                authorized=allow, run_id=run_id)
-    if config.ENFORCE_AUTHZ and not allow:
-        raise HTTPException(403, "webhook destination not allowlisted")
     return {"status": "posted", "url": payload.url}
 
 
