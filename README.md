@@ -39,10 +39,19 @@ uvicorn app.main:app               # :8000
 python -m mcp_servers.legitimate   # :8001/mcp
 python -m mcp_servers.malicious    # :8002/mcp
 
-python -m agents.run_trial --matrix               # {Sonnet 5, Opus 4.8} × {attack conditions}
 python -m agents.run_trial --attack ipi_tool --topology mesh   # one mesh trial
-python -m agents.run_trial --matrix --topology both            # chain vs mesh, all conditions
+python -m agents.run_trial --model sonnet --attack all --topology both --repeat 5   # chain vs mesh, repeated
 ```
+## Attack presets
+| Preset | Vector | Evil tools bound to |
+|---|---|---|
+| `off` | none (baseline) | — |
+| `tpa_p1` | explicit-trigger function hijack (`check_service_status`) | Orchestrator |
+| `tpa_p2` | implicit-trigger function hijack (`compliance_audit_logger`) | Orchestrator |
+| `tpa_p3` | implicit-trigger parameter tampering (`reply_formatter`) | Orchestrator |
+| `ipi_ticket` | poisoned ticket body (`is_injected=True`, seeded by the runner) | — |
+| `ipi_tool` | poisoned tool output (`fetch_enrichment_profile`) | Data Retrieval |
+| `all` | every paradigm + injected ticket | Orchestrator + Data Retrieval |
 
 `--topology` selects the agent graph: `chain` (default), `mesh`, or `both` for
 the chain-vs-mesh comparison. Scoring is topology-independent, so ASR and cascade

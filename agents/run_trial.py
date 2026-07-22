@@ -1,4 +1,4 @@
-"""Trial runner — drives one (or a matrix of) full trials through the real
+"""Trial runner — drives one or more full trials through the real
 three-agent chain and scores with the existing harness.
 
 Per-trial loop (AgentDojo pre/post-environment contract):
@@ -28,8 +28,6 @@ Examples:
     python -m agents.run_trial --model sonnet --attack tpa_p3
     python -m agents.run_trial --model kimi --attack tpa_p3
     python -m agents.run_trial --model kimi:kimi-k3 --attack all
-    python -m agents.run_trial --matrix               # opus+sonnet x all attack conditions
-    python -m agents.run_trial --model kimi --matrix  # kimi x all attack conditions
 """
 from __future__ import annotations
 
@@ -55,8 +53,6 @@ MODEL_ALIASES = {
     "sonnet": "claude-sonnet-5",
     "kimi": "kimi:kimi-k3",
 }
-MATRIX_ATTACKS = ["off", "tpa_p1", "tpa_p2", "tpa_p3", "ipi_ticket", "ipi_tool"]
-
 # Topology dispatch. Both builders share the (*, attack, model_id, run_id)
 # signature and compile a LangGraph app; they differ only in the initial state
 # shape (the chain threads a single `handoff` string; the mesh fans out via
@@ -170,13 +166,20 @@ async def run_trial(*, attack_name: str, model_id: str, topology: str = "chain",
         await client.post("/admin/reset")
     engine.dispose()  # drop cached pages so the next trial reads the restored DB
 
+    transcript = final_state.get("transcript", [])
+    # True if any agent was still requesting tools when it hit MAX_STEPS: the
+    # dangling call was stripped to keep the transcript valid for OpenAI-compatible
+    # vendors, so a capped agent may not have finished its last action. Surfaced so
+    # a possible truncation is visible in results rather than a silent miss.
+    hit_cap = any(node.get("hit_cap") for node in transcript)
+
     result = {
         "topology": topology,
         "attack": attack_name, "model": model_id, "run_id": run_id,
         "ticket_id": ticket_id, "security_asr": bool(security),
         "token_asr": bool(token_asr), "utility": bool(utility),
-        "cascade_depth": depth,
-        "transcript": final_state.get("transcript", []),
+        "cascade_depth": depth, "hit_cap": hit_cap,
+        "transcript": transcript,
     }
     if trace:
         result["trace_path"] = str(_dump_trace(result))
@@ -186,6 +189,8 @@ async def run_trial(*, attack_name: str, model_id: str, topology: str = "chain",
         line = (f"[{topology:5s} | {model_id} | {attack_name:11s}] "
                 f"ASR={result['security_asr']!s:5s} token_ASR={result['token_asr']!s:5s} "
                 f"utility={result['utility']!s:5s} cascade_depth={depth_s}")
+        if hit_cap:
+            line += "  hit_cap=True"  # an agent maxed out MAX_STEPS; last action may be truncated
         if trace:
             line += f"  trace={result['trace_path']}"
         print(line)
@@ -253,20 +258,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run LinkX cascading-IPI chain trials.")
     parser.add_argument("--model", default=None,
                         help="opus | sonnet | kimi | explicit \"provider:model\" id, e.g. "
-                             "kimi:kimi-k3 (default: opus; with --matrix, default: opus+sonnet)")
+                             "kimi:kimi-k3 (default: opus)")
     parser.add_argument("--attack", default=None,
                         help=f"one of: {', '.join(ATTACKS)} (default: baseline demo pair)")
-    parser.add_argument("--matrix", action="store_true",
-                        help="run all attack conditions for --model (or both built-in "
-                             "models if --model is omitted)")
     parser.add_argument("--topology", default="chain", choices=[*TOPOLOGIES, "both"],
                         help="chain | mesh | both (default: chain). 'both' runs each "
                              "condition on both topologies for the chain-vs-mesh comparison")
-    parser.add_argument("--pilot", action="store_true",
-                        help="repeat each attack condition on one model (default --repeat 5, "
-                             "--trace on) to probe whether ~0%% ASR is real or a harness artifact")
     parser.add_argument("--repeat", type=int, default=1,
-                        help="trials per condition (default 1; --pilot defaults it to 5)")
+                        help="trials per condition (default 1)")
     parser.add_argument("--trace", action="store_true",
                         help="write full per-agent message traces to LINKX_TRACE_DIR")
     parser.add_argument("--victim", type=int, default=None, help="victim customer id")
@@ -276,23 +275,6 @@ def main() -> None:
         raise SystemExit(1)
 
     topologies = list(TOPOLOGIES) if args.topology == "both" else [args.topology]
-
-    if args.pilot:
-        model_id = _resolve_model(args.model or "opus")
-        repeat = args.repeat if args.repeat > 1 else 5
-        asyncio.run(run_matrix([model_id], MATRIX_ATTACKS, topologies,
-                               victim_customer_id=args.victim, repeat=repeat, trace=True))
-        return
-
-    if args.matrix:
-        if args.model:
-            models = [_resolve_model(args.model)]
-        else:
-            models = [MODEL_ALIASES["sonnet"], MODEL_ALIASES["opus"]]
-        asyncio.run(run_matrix(models, MATRIX_ATTACKS, topologies,
-                               victim_customer_id=args.victim,
-                               repeat=args.repeat, trace=args.trace))
-        return
 
     model_id = _resolve_model(args.model or "opus")
     if args.attack:

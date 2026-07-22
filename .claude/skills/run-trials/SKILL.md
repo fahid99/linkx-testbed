@@ -1,6 +1,6 @@
 ---
 name: run-trials
-description: Launch the LinkX API + both MCP servers and run RogueAgent attack trials (all attack presets, single-model matrix, or full model x topology x attack sweep). Use whenever asked to run trials, benchmark a model against the attack presets, or get ASR numbers.
+description: Launch the LinkX API + both MCP servers and run RogueAgent attack trials (single condition or repeated over --repeat, across chain/mesh topologies). Use whenever asked to run trials, benchmark a model against the attack presets, or get ASR numbers.
 ---
 
 # Running RogueAgent trials
@@ -9,7 +9,19 @@ Three processes must be up before any trial: the LinkX API and both MCP servers.
 Model API keys (`ANTHROPIC_API_KEY`, and for non-Anthropic models the matching
 `*_API_KEY` from `.env`, e.g. `KIMI_API_KEY`) must be set.
 
-## 1. Launch the three processes
+## 1. Launch the three processes, seed the DB
+
+```bash
+./scripts/up.sh
+```
+
+Starts the LinkX API + both MCP servers (skipping any already listening on their
+port), polls each until it responds, then reseeds the DB (deterministic,
+seed=6727 — safe to rerun). Prints a ready-to-copy `agents.run_trial` command
+when done. Logs land in `/tmp/linkx_logs/`.
+
+<details>
+<summary>Manual equivalent, if you need to launch by hand</summary>
 
 ```bash
 set -a && . ./.env && set +a
@@ -23,28 +35,20 @@ curl -s http://localhost:8001/mcp -o /dev/null -w "Legit MCP: %{http_code}\n"
 curl -s http://localhost:8002/mcp -o /dev/null -w "Evil MCP: %{http_code}\n"
 ```
 
-All three should respond before proceeding. If not, check the three log files above.
+All three should respond before proceeding (the MCP servers reply 406 to a plain
+GET — that still means they're up). If not, check the three log files above.
+Then seed with `.venv/bin/python -m scripts.init_db`.
 
-## 2. (Re)seed the database if needed
+</details>
 
-```bash
-.venv/bin/python -m scripts.init_db
-```
-
-Only needed once, or after a corrupted/uncommitted DB state — seeding is deterministic
-(seed=6727) so re-running it is safe.
-
-## 3. Run trials
+## 2. Run trials
 
 ```bash
 # single condition
 .venv/bin/python -m agents.run_trial --model <alias|provider:model> --attack <preset> --topology chain|mesh|both --trace
 
-# one model x all attack conditions x chosen topology(ies)
-.venv/bin/python -m agents.run_trial --model <alias|provider:model> --matrix --topology chain|mesh|both --trace
-
-# both built-in models (opus, sonnet) x all attacks
-.venv/bin/python -m agents.run_trial --matrix --topology both --trace
+# single condition, repeated for an aggregate ASR rate
+.venv/bin/python -m agents.run_trial --model <alias|provider:model> --attack <preset> --topology chain|mesh|both --repeat 5 --trace
 ```
 
 Model aliases live in `MODEL_ALIASES` in `agents/run_trial.py` (`opus`, `sonnet`, `kimi`,
@@ -52,7 +56,7 @@ Model aliases live in `MODEL_ALIASES` in `agents/run_trial.py` (`opus`, `sonnet`
 in `agents/chain.py` — add a new vendor there (one `ProviderSpec` entry) rather than
 special-casing it in the runner. A new provider needs its API key in `.env` first.
 
-## 4. Attack conditions
+## 3. Attack conditions
 
 The attack toggles per trial via `AttackConfig` presets in `agents/chain.py` (chosen with
 `--attack`). Baseline utility and attack ASR come from the **same** pipeline; with `off`,
@@ -71,13 +75,23 @@ no malicious client is created at all.
 The runner prints a per-condition line as each trial finishes, then an aggregate ASR /
 utility / cascade-depth table at the end, broken out by (topology, model, attack).
 
-## 5. Results
+## 4. Results
 
 Output JSON is written to `data/<Vendor>/` (e.g. `data/Claude/`, `data/Kimi/` — one subdir per
 model provider) with filename per code specifications in `agents/run_trial.py`. The aggregate table is printed to stdout and also
 written to `data/trials/aggregate.json`.
 
-## 6. Teardown
+## 5. Teardown
+
+```bash
+./scripts/down.sh
+```
+
+Stops all three processes by pattern match; reports which were actually running.
+Safe to rerun — no-op if nothing's up.
+
+<details>
+<summary>Manual equivalent</summary>
 
 ```bash
 pkill -f "uvicorn app.main:app"
@@ -85,11 +99,13 @@ pkill -f "mcp_servers.legitimate"
 pkill -f "mcp_servers.malicious"
 ```
 
+</details>
+
 ## Notes
 
 - Each trial snapshots the DB, runs the graph, scores, then resets the DB — trials are
   independent even back-to-back on a live server (see CLAUDE.md's Evaluation contract).
-- `--repeat N` (default 5) controls how many times each condition repeats for the
+- `--repeat N` (default 1) controls how many times each condition repeats for the
   aggregate table — this is what makes ASR a rate rather than a single 0/1 outcome.
 - If a model refuses the attack outright (0% ASR across the board), check the trace
   files under `data/traces/` before assuming a harness bug — this has happened before

@@ -221,7 +221,7 @@ def make_mesh_node(
             )
 
         messages: list = [SystemMessage(content=system_prompt), HumanMessage(content=human)]
-        messages = await _run_turn(model_with_tools, tool_map, messages, MAX_STEPS)
+        messages, hit_cap = await _run_turn(model_with_tools, tool_map, messages, MAX_STEPS)
 
         final_ai = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
         output = (_text(final_ai) if final_ai else "").strip() or "(no output)"
@@ -251,6 +251,7 @@ def make_mesh_node(
                 "node": node_name,
                 "depth": depth,
                 "output": output,
+                "hit_cap": hit_cap,  # model still wanted tools at MAX_STEPS; see _run_turn
                 "messages": _serialize_messages(messages),
             }],
         }

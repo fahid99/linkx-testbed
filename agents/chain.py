@@ -244,14 +244,40 @@ async def _record_handoff(run_id: str, hop: int, source: str, target: str, paylo
         })
 
 
-async def _run_turn(model_with_tools, tool_map: dict, messages: list, max_steps: int) -> list:
+async def _run_turn(
+    model_with_tools, tool_map: dict, messages: list, max_steps: int
+) -> tuple[list, bool]:
     """Bounded ReAct loop: invoke the model, execute any tool calls, feed the
-    results back, and repeat until the model stops calling tools."""
-    for _ in range(max_steps):
+    results back, and repeat until the model stops calling tools.
+
+    Returns ``(messages, hit_cap)`` where ``hit_cap`` is True iff the model was
+    still requesting tools when the ``max_steps`` cap was reached.
+
+    Invariant kept for every step: an ``AIMessage`` that carries ``tool_calls``
+    is *always* followed by one ``ToolMessage`` per call before the next
+    ``ainvoke``. OpenAI-compatible vendors (Kimi/Moonshot, Groq, OpenRouter, …)
+    reject a history with an unanswered ``tool_call_id`` with a 400; the native
+    Anthropic path tolerates it, so this only bites non-Anthropic providers. Two
+    things would otherwise break the invariant: (1) the ``max_steps`` boundary
+    appending a tool-calling AIMessage that never gets answered, and (2) a vendor
+    emitting a call with a null/blank id. We answer every call on the same
+    iteration and, on the final step, strip any still-unanswered calls off the
+    last message so no dangling tool-call is ever re-sent. A stripped call was
+    never executed, so it logged nothing and cannot affect ASR — but the caller
+    still learns the cap was hit via the returned flag."""
+    hit_cap = False
+    for step in range(max_steps):
         ai = await model_with_tools.ainvoke(messages)
         messages.append(ai)
         tool_calls = getattr(ai, "tool_calls", None) or []
         if not tool_calls:
+            break
+        if step == max_steps - 1:
+            # Last permitted step: we won't loop again to answer these calls, so
+            # leaving them would send a dangling tool-call to the *next* node's
+            # first ainvoke. Drop the calls (keep the assistant text) instead.
+            _strip_tool_calls(ai)
+            hit_cap = True
             break
         for tc in tool_calls:
             tool = tool_map.get(tc["name"])
@@ -262,10 +288,26 @@ async def _run_turn(model_with_tools, tool_map: dict, messages: list, max_steps:
                     result = await tool.ainvoke(tc["args"])
                 except Exception as exc:  # surface tool errors to the agent, don't crash the run
                     result = f"error: {exc}"
+            # Some OpenAI-compatible vendors can emit a blank id; fall back to a
+            # deterministic one so the answer still matches its call.
+            call_id = tc.get("id") or f"{tc['name']}:{step}"
             messages.append(ToolMessage(
-                content=str(result), tool_call_id=tc["id"], name=tc["name"],
+                content=str(result), tool_call_id=call_id, name=tc["name"],
             ))
-    return messages
+    return messages, hit_cap
+
+
+def _strip_tool_calls(ai: AIMessage) -> None:
+    """Remove tool calls from an ``AIMessage`` in place so it is a plain
+    assistant turn. Used when the tool-loop cap is hit while the model still
+    wants to call tools: an unanswered tool-call must not survive into the
+    history an OpenAI-compatible provider validates on the next request."""
+    ai.tool_calls = []
+    ai.invalid_tool_calls = []
+    # ChatOpenAI round-trips raw tool_calls through additional_kwargs; clear
+    # them too or the serialized request still carries the unanswered calls.
+    if isinstance(getattr(ai, "additional_kwargs", None), dict):
+        ai.additional_kwargs.pop("tool_calls", None)
 
 
 async def _load_tools(principal: str, run_id: str, evil_names: tuple[str, ...]) -> list:
@@ -342,7 +384,7 @@ def make_node(
                 + "\n\nComplete your part of the workflow using your tools."
             )
         messages: list = [SystemMessage(content=system_prompt), HumanMessage(content=human)]
-        messages = await _run_turn(model_with_tools, tool_map, messages, MAX_STEPS)
+        messages, hit_cap = await _run_turn(model_with_tools, tool_map, messages, MAX_STEPS)
 
         final_ai = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
         output = (_text(final_ai) if final_ai else "").strip() or "(no output)"
@@ -356,6 +398,7 @@ def make_node(
                 "agent": principal,
                 "output": output,
                 "hop_index": hop_index,
+                "hit_cap": hit_cap,  # model still wanted tools at MAX_STEPS; see _run_turn
                 "messages": _serialize_messages(messages),
             }],
         }
