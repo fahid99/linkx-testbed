@@ -38,9 +38,17 @@ To run trials through the real agents, start all three processes. Make sure an A
 uvicorn app.main:app               # :8000
 python -m mcp_servers.legitimate   # :8001/mcp
 python -m mcp_servers.malicious    # :8002/mcp
+```
 
-python -m agents.run_trial --attack ipi_tool --topology mesh   # one mesh trial
-python -m agents.run_trial --model sonnet --attack all --topology both --repeat 5   # chain vs mesh, repeated
+Or use the scripts for easy start and teardown of the database seed and servers
+```bash
+scripts/up.sh
+scripts/down.sh
+```
+
+To run the configuration with the presets and run the trials:
+```bash
+python -m agents.run_trial --model sonnet --attack all --topology both --repeat 5 --trace
 ```
 ## Attack presets
 | Preset | Vector | Evil tools bound to |
@@ -52,6 +60,8 @@ python -m agents.run_trial --model sonnet --attack all --topology both --repeat 
 | `ipi_ticket` | poisoned ticket body (`is_injected=True`, seeded by the runner) | — |
 | `ipi_tool` | poisoned tool output (`fetch_enrichment_profile`) | Data Retrieval |
 | `all` | every paradigm + injected ticket | Orchestrator + Data Retrieval |
+
+`--model` selects the LLM to attack: `sonnet`, `opus`, `kimi`
 
 `--topology` selects the agent graph: `chain` (default), `mesh`, or `both` for
 the chain-vs-mesh comparison. Scoring is topology-independent, so ASR and cascade
@@ -85,6 +95,8 @@ agents/
 scripts/
   init_db.py         (re)create and seed
   smoke_test.py      walks one trial: ingress -> handoff -> exfil -> scorer
+  up.sh              start API + both MCP servers, wait for health, seed the DB
+  down.sh            stop all three processes
 ```
 
 ## Tables by role
@@ -187,10 +199,3 @@ Two signals, both read from `action_log` + `agent_handoffs`, scoped by `run_id`:
 * **Trial runner** (`agents/run_trial.py`) runs the snapshot → run → score →
   reset loop for either topology (`--topology chain|mesh|both`) and reports ASR +
   cascade depth per topology, model, and attack condition.
-
-## Possible extensions
-
-* **Fully-connected peer mesh** — swap the mesh's static `EDGES` for per-turn LLM
-  routing over a fully-connected peer graph. The identity plumbing, handoff
-  provenance threading, and cascade metric are already general enough to support
-  it, so this is a change to `agents/mesh.py` alone.

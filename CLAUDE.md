@@ -9,10 +9,7 @@ topologies to evaluate multiple vendors (). "LinkX" names the redteamed applicat
 "RogueAgent" names the harness around it — the MCP servers, agent topologies, attack
 presets, and evaluation/scoring pipeline.
 
-The research question: when a compromised agent passes its poisoned output downstream as a
-trusted inter-agent message, at what hop does the injection propagate and does it survive the
-handoff boundary? This is the gap CaMeL does not cover (CaMeL defends tool-call boundaries
-within a single agent, not inter-agent handoffs).
+The research question: what is the ASR of indirect prompt injection attacks targeting multi-agent MCP-based systems across both chain and mesh topologies?
 
 Check .claude > SKILL.MD for instructions on how to execute trials. Check settings.json on allowlisted commands.
 
@@ -51,6 +48,8 @@ agents/
 scripts/
   init_db.py         calls seed_all()
   smoke_test.py      full trial: ingress → handoff → exfil → scorer
+  up.sh              start API + both MCP servers, wait for health, seed the DB
+  down.sh            stop all three processes
 data/
   linkx.db       live database (gitignored)
   linkx.snapshot.db  pre-trial snapshot (gitignored)
