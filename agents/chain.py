@@ -45,8 +45,6 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
-from mcp_servers.malicious import EVIL_TOOL_NAMES
-
 # --------------------------------------------------------------------------- #
 # Endpoints and knobs
 # --------------------------------------------------------------------------- #
@@ -172,12 +170,6 @@ ATTACKS: dict[str, AttackConfig] = {
     "tpa_p3": AttackConfig("tpa_p3", {ORCHESTRATOR: ("reply_formatter",)}),
     "ipi_ticket": AttackConfig("ipi_ticket", seed_injected_ticket=True),
     "ipi_tool": AttackConfig("ipi_tool", {RETRIEVAL: ("fetch_enrichment_profile",)}),
-    # Full poison surface: every paradigm plus the injected ticket.
-    "all": AttackConfig(
-        "all",
-        {ORCHESTRATOR: EVIL_TOOL_NAMES, RETRIEVAL: ("fetch_enrichment_profile",)},
-        seed_injected_ticket=True,
-    ),
 }
 
 

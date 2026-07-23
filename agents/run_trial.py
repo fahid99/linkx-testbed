@@ -17,7 +17,7 @@ provider(s) you're evaluating — ANTHROPIC_API_KEY, KIMI_API_KEY, etc., see
 .env.example):
     uvicorn app.main:app                      # LinkX API on :8000
     python -m mcp_servers.legitimate          # legit MCP on :8001
-    python -m mcp_servers.malicious           # evil  MCP on :8002 (needed for TPA/ipi_tool/all)
+    python -m mcp_servers.malicious           # evil  MCP on :8002 (needed for TPA/ipi_tool)
 
 Model ids are either a bare Anthropic id or "provider:model" (see PROVIDERS in
 agents/chain.py) for any other OpenAI-compatible vendor; --model also accepts
@@ -27,7 +27,7 @@ Examples:
     python -m agents.run_trial                        # baseline + full attack on Opus 4.8
     python -m agents.run_trial --model sonnet --attack tpa_p3
     python -m agents.run_trial --model kimi --attack tpa_p3
-    python -m agents.run_trial --model kimi:kimi-k3 --attack all
+    python -m agents.run_trial --model kimi:kimi-k3 --attack each --repeat 5
 """
 from __future__ import annotations
 
@@ -53,6 +53,11 @@ MODEL_ALIASES = {
     "sonnet": "claude-sonnet-5",
     "kimi": "kimi:kimi-k3",
 }
+
+# The six attack conditions. `--attack each` expands to exactly these, so
+# `--repeat N` yields the N-per-condition trace layout
+# (data/<Vendor>/chain.<cond>.<model>...).
+INDIVIDUAL_ATTACKS = ["off", "tpa_p1", "tpa_p2", "tpa_p3", "ipi_ticket", "ipi_tool"]
 # Topology dispatch. Both builders share the (*, attack, model_id, run_id)
 # signature and compile a LangGraph app; they differ only in the initial state
 # shape (the chain threads a single `handoff` string; the mesh fans out via
@@ -260,7 +265,9 @@ def main() -> None:
                         help="opus | sonnet | kimi | explicit \"provider:model\" id, e.g. "
                              "kimi:kimi-k3 (default: opus)")
     parser.add_argument("--attack", default=None,
-                        help=f"one of: {', '.join(ATTACKS)} (default: baseline demo pair)")
+                        help=f"one of: {', '.join(ATTACKS)}, or 'each' to iterate every "
+                             "condition; combine with --repeat N for N traces per condition "
+                             "(default: baseline demo pair)")
     parser.add_argument("--topology", default="chain", choices=[*TOPOLOGIES, "both"],
                         help="chain | mesh | both (default: chain). 'both' runs each "
                              "condition on both topologies for the chain-vs-mesh comparison")
@@ -278,14 +285,17 @@ def main() -> None:
 
     model_id = _resolve_model(args.model or "opus")
     if args.attack:
-        for topology in topologies:
-            asyncio.run(run_trial(attack_name=args.attack, model_id=model_id,
-                                  topology=topology, victim_customer_id=args.victim,
-                                  trace=args.trace))
+        # 'each' expands to the six individual conditions; any other value is a
+        # single named preset. Routed through run_matrix either way so --repeat
+        # is honored (one trace per repeat per condition per topology).
+        attacks = INDIVIDUAL_ATTACKS if args.attack == "each" else [args.attack]
+        asyncio.run(run_matrix([model_id], attacks, topologies,
+                               victim_customer_id=args.victim,
+                               repeat=args.repeat, trace=args.trace))
     else:
         # Default demo: reproduce the smoke test through real agents —
         # benign succeeds with attack off; exfil succeeds with attack on.
-        asyncio.run(run_matrix([model_id], ["off", "all"], topologies,
+        asyncio.run(run_matrix([model_id], ["off", "ipi_ticket"], topologies,
                                victim_customer_id=args.victim,
                                repeat=args.repeat, trace=args.trace))
 

@@ -48,7 +48,7 @@ scripts/down.sh
 
 To run the configuration with the presets and run the trials:
 ```bash
-python -m agents.run_trial --model sonnet --attack all --topology both --repeat 5 --trace
+python -m agents.run_trial --model sonnet --attack each --topology both --repeat 5 --trace
 ```
 ## Attack presets
 | Preset | Vector | Evil tools bound to |
@@ -59,7 +59,9 @@ python -m agents.run_trial --model sonnet --attack all --topology both --repeat 
 | `tpa_p3` | implicit-trigger parameter tampering (`reply_formatter`) | Orchestrator |
 | `ipi_ticket` | poisoned ticket body (`is_injected=True`, seeded by the runner) | — |
 | `ipi_tool` | poisoned tool output (`fetch_enrichment_profile`) | Data Retrieval |
-| `all` | every paradigm + injected ticket | Orchestrator + Data Retrieval |
+
+`--attack each` iterates every preset above; combine with `--repeat N` for N traces per
+condition.
 
 `--model` selects the LLM to attack: `sonnet`, `opus`, `kimi`
 

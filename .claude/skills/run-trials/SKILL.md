@@ -47,9 +47,16 @@ Then seed with `.venv/bin/python -m scripts.init_db`.
 # single condition
 .venv/bin/python -m agents.run_trial --model <alias|provider:model> --attack <preset> --topology chain|mesh|both --trace
 
-# single condition, repeated for an aggregate ASR rate
+# single condition, repeated for an aggregate ASR rate (5 traces)
 .venv/bin/python -m agents.run_trial --model <alias|provider:model> --attack <preset> --topology chain|mesh|both --repeat 5 --trace
+
+# ALL six conditions, each repeated --repeat times.
+# --attack each --repeat 5  ->  30 traces (5 per condition), matching data/Claude/.
+.venv/bin/python -m agents.run_trial --model <alias|provider:model> --attack each --topology chain|mesh|both --repeat 5 --trace
 ```
+
+`--repeat N` writes N traces per condition. Use `--attack each` to iterate all six
+conditions and get the full per-condition trace layout in one command.
 
 Model aliases live in `MODEL_ALIASES` in `agents/run_trial.py` (`opus`, `sonnet`, `kimi`,
 ...). Any other vendor is passed as `provider:model-id` and resolved through `PROVIDERS`
@@ -70,7 +77,6 @@ no malicious client is created at all.
 | `tpa_p3` | implicit-trigger parameter tampering (`reply_formatter`) | Orchestrator |
 | `ipi_ticket` | poisoned ticket body (`is_injected=True`, seeded by the runner) | — |
 | `ipi_tool` | poisoned tool output (`fetch_enrichment_profile`) | Data Retrieval |
-| `all` | every paradigm + injected ticket | Orchestrator + Data Retrieval |
 
 The runner prints a per-condition line as each trial finishes, then an aggregate ASR /
 utility / cascade-depth table at the end, broken out by (topology, model, attack).

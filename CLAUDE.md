@@ -143,7 +143,12 @@ no malicious client is created at all.
 | `tpa_p3` | implicit-trigger parameter tampering (`reply_formatter`) | Orchestrator |
 | `ipi_ticket` | poisoned ticket body (`is_injected=True`, seeded by the runner) | — |
 | `ipi_tool` | poisoned tool output (`fetch_enrichment_profile`) | Data Retrieval |
-| `all` | every paradigm + injected ticket | Orchestrator + Data Retrieval |
+
+`--attack` also accepts the meta-value `each`, which iterates every preset above (it is
+**not** an `AttackConfig` — the runner expands it via `INDIVIDUAL_ATTACKS` in
+`agents/run_trial.py`). Combined with `--repeat N` it writes N traces per condition — e.g.
+`--attack each --repeat 5` produces the 30-trace per-condition layout under `data/<Vendor>/`.
+Both single-preset and `each` runs go through `run_matrix`, so `--repeat` is always honored.
 
 ---
 
